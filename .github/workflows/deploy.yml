@@ -30,13 +30,14 @@ jobs:
 
       - name: Start LocalStack
         run: |
-          docker run -d --rm \
+          docker run -d \
             --name localstack \
             -p 4566:4566 \
             -p 4510-4559:4510-4559 \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
             -e LAMBDA_EXECUTOR=docker \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e AWS_ACCESS_KEY_ID=test \
             -e AWS_SECRET_ACCESS_KEY=test \
