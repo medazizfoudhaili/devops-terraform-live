@@ -1,223 +1,97 @@
 # Deployment Guide
 
-Complete step-by-step guide to deploy this serverless infrastructure.
+This guide covers the local and CI deployment flow for the Terraform + LocalStack project.
 
 ## Prerequisites
 
-- **Terraform** >= 1.0 ([Download](https://www.terraform.io/downloads.html))
-- **Docker & Docker Compose** (for LocalStack)
-- **Python** 3.9+ (for Lambda function)
-- **Git** (for version control)
-- **AWS CLI** (optional, for manual testing)
+- Docker
+- Terraform
+- Python 3.9+
+- Git
 
-## Local Development Environment
+## 1. Start LocalStack
 
-### Step 1: Start LocalStack
-
-LocalStack emulates AWS services locally for development and testing.
-
-**Option A: Using Docker directly**
 ```bash
-docker run -d -p 4566:4566 \
+docker run -d \
+  --name localstack \
+  -p 4566:4566 \
+  -p 4510-4559:4510-4559 \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  localstack/localstack:latest
+  -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
+  -e LAMBDA_EXECUTOR=docker \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -e AWS_ACCESS_KEY_ID=test \
+  -e AWS_SECRET_ACCESS_KEY=test \
+  localstack/localstack:3.8
 ```
 
-**Option B: Using Docker Compose**
-
-Create `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  localstack:
-    image: localstack/localstack:latest
-    ports:
-      - "4566:4566"
-    environment:
-      - SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
-
-Then run:
-```bash
-docker-compose up -d
-```
-
-**Verify LocalStack is running:**
-```bash
-curl http://localhost:4566/health
-```
-
-### Step 2: Install Dependencies
+Check readiness:
 
 ```bash
-# Optional: Create Python virtual environment
-python -m venv venv
-source venv/Scripts/activate  # On Windows
-# or
-source venv/bin/activate      # On Linux/Mac
-
-# Install test dependencies
-pip install pytest boto3
+curl http://localhost:4566/_localstack/health
 ```
 
-### Step 3: Build Lambda Package
+## 2. Prepare the Lambda package
 
-Create the ZIP file for Lambda deployment.
-
-**Windows (PowerShell):**
-```powershell
-.\build.ps1
-```
-
-**Linux/Mac (Bash):**
 ```bash
 bash build.sh
 ```
 
-Expected output: `lambda_function_payload.zip`
+This creates the zip bundle used by Terraform.
 
-### Step 4: Initialize Terraform
+## 3. Initialize Terraform
 
 ```bash
-cd devops-terraform-live
 terraform init
 ```
 
-Expected output:
-```
-Initializing the backend...
-Initializing provider plugins...
-- Reusing previous version of hashicorp/aws from the dependency lock file
-- Reusing previous version of hashicorp/archive from the dependency lock file
-- Using previously-installed hashicorp/aws v5.x.x
-- Using previously-installed hashicorp/archive v2.x.x
-
-Terraform has been successfully configured!
-```
-
-### Step 5: Validate Configuration
-
-Check Terraform syntax and configuration:
+## 4. Validate Terraform
 
 ```bash
 terraform validate
 ```
 
-Expected output:
-```
-Success! The configuration is valid.
-```
-
-### Step 6: Plan Deployment
-
-Review what resources will be created:
+## 5. Plan and apply
 
 ```bash
 terraform plan -out=tfplan
+terraform apply -auto-approve tfplan
 ```
 
-Expected output:
-```
-Plan: 13 to add, 0 to change, 0 to destroy.
-```
-
-Resources being created:
-- 1 DynamoDB Table
-- 1 Lambda Function
-- 1 IAM Role
-- 1 Lambda Permission
-- 1 API Gateway REST API
-- 1 API Gateway Resource
-- 1 API Gateway Method
-- 1 API Gateway Method Response
-- 1 API Gateway Integration
-- 1 API Gateway Integration Response
-- 1 API Gateway Deployment
-- 1 API Gateway Stage
-- 1 Archive File (for Lambda ZIP)
-
-### Step 7: Apply Configuration
-
-Deploy infrastructure to LocalStack:
+## 6. Run tests
 
 ```bash
-terraform apply tfplan
+python -m pytest -q
 ```
 
-You should see:
-```
-Apply complete! Resources: 13 added, 0 changed, 0 destroyed.
-
-Outputs:
-
-api_endpoint = "http://localhost:4566/restapis/abc123xyz/stages/prod/_user_request_/hello"
-dynamodb_table_name = "users"
-lambda_function_name = "hello-api"
-```
-
-### Step 8: Run Unit Tests
+## 7. Call the API
 
 ```bash
-pytest test_index.py -v
+curl "$(terraform output -raw api_endpoint)"
 ```
 
-Expected output:
-```
-test_index.py::TestLambdaHandler::test_handler_returns_200_status PASSED
-test_index.py::TestLambdaHandler::test_handler_returns_json_body PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_message PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_database_status PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_table_name PASSED
-test_index.py::TestLambdaHandler::test_handler_response_structure PASSED
+Expected response:
 
-===== 6 passed in 0.XX s =====
-```
-
-### Step 9: Test the API Endpoint
-
-Get the API endpoint from Terraform outputs:
-
-```bash
-API_ENDPOINT=$(terraform output -raw api_endpoint)
-echo $API_ENDPOINT
-```
-
-**Test with curl:**
-```bash
-curl $API_ENDPOINT
-```
-
-**Test with PowerShell:**
-```powershell
-$apiEndpoint = terraform output -raw api_endpoint
-Invoke-WebRequest -Uri $apiEndpoint
-```
-
-**Test with AWS CLI:**
-```bash
-aws lambda invoke \
-  --function-name hello-api \
-  --endpoint-url http://localhost:4566 \
-  response.json
-
-cat response.json
-```
-
-**Expected Response:**
 ```json
 {
-  "statusCode": 200,
-  "body": "{\"message\": \"Hello from Terraform + LocalStack!\", \"database_status\": \"User created successfully\", \"table_name\": \"users\"}"
+  "message": "Hello from Terraform + LocalStack!",
+  "database_status": "User created successfully",
+  "table_name": "users",
+  "event": "{}"
 }
+```
+
+## 8. Clean up
+
+```bash
+terraform destroy -auto-approve
+docker rm -f localstack
+```
+
+## CI notes
+
+The GitHub workflow in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) starts LocalStack in a Linux runner and waits for the health endpoint before continuing with Terraform validation and apply steps.
+
 ```
 
 ### Step 10: Verify DynamoDB Data

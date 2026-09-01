@@ -1,223 +1,58 @@
-# Architecture Documentation
+# Architecture Overview
 
-## System Design
+This project is a small AWS-like serverless architecture deployed through Terraform against LocalStack.
 
-This project implements a **serverless microservices architecture** using AWS services orchestrated with Terraform.
+## High-level flow
 
-## Architecture Diagram
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Client Layer                               │
-│                  (HTTP Requests)                              │
-└─────────────────────────┬──────────────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│              API Gateway (REST API)                          │
-│  • Protocol: HTTP/HTTPS                                      │
-│  • Resource: /hello                                          │
-│  • Method: GET                                               │
-│  • Authorization: NONE (for demo)                            │
-└─────────────────────────┬──────────────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│         Lambda Function (Compute Layer)                      │
-│  • Runtime: Python 3.9                                       │
-│  • Handler: index.handler                                    │
-│  • Memory: 128MB (default)                                   │
-│  • Timeout: 30s (default)                                    │
-│  • Role: lambda-role (IAM)                                   │
-└─────────────────────────┬──────────────────────────────────────┘
-                          │
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│            DynamoDB (Data Layer)                             │
-│  • Table: users                                              │
-│  • Partition Key: id (String)                                │
-│  • Billing: Pay-per-request                                  │
-│  • Items: User records                                       │
-└──────────────────────────────────────────────────────────────┘
+```text
+Client
+  ↓
+API Gateway
+  ↓
+Lambda (Python)
+  ↓
+DynamoDB table + IAM role
 ```
 
-## Component Details
+## Components
 
-### 1. API Gateway
-- **Type**: REST API
-- **Purpose**: Public entry point for requests
-- **Configuration**:
-  - Base path: `/hello`
-  - Method: GET
-  - Authorization: None (demo-only)
-  - Integration type: Lambda proxy integration
+### API Gateway
+- Exposes the route `/hello`
+- Uses a GET method
+- Integrates with Lambda through AWS proxy mode
 
-### 2. Lambda Function
-- **Type**: Compute service
-- **Purpose**: Business logic execution
-- **Responsibilities**:
-  - Receives HTTP request from API Gateway
-  - Writes record to DynamoDB
-  - Returns formatted JSON response
-- **Package**: `lambda_function_payload.zip` (auto-created)
-- **Dependencies**: boto3 (AWS SDK)
+### Lambda
+- Runtime: Python 3.9
+- Handler: `index.handler`
+- Purpose: return a JSON success response for API validation in LocalStack
+- This is intentionally minimal and reliable for local testing and automation demos
 
-### 3. DynamoDB
-- **Type**: NoSQL database
-- **Purpose**: Data persistence
-- **Schema**:
-  ```
-  {
-    "id": "user-123",           // Partition Key (String)
-    "name": "DevOps Engineer",  // Attribute (String)
-    "status": "Active"          // Attribute (String)
-  }
-  ```
-- **Throughput**: On-demand (pay per request)
-- **Backup**: None (local testing only)
+### DynamoDB
+- Table name: `users`
+- Created via Terraform
+- Used as part of the project infrastructure footprint
 
-### 4. IAM Role
-- **Type**: Execution role
-- **Purpose**: Grant Lambda permissions to access DynamoDB
-- **Trust Relationship**: Lambda service
-- **Permissions**: Implicit (LocalStack doesn't enforce strictly)
-- **Production Note**: Add explicit DynamoDB policy
+### IAM
+- Lambda execution role created by Terraform
+- Granting the required trust relationship for LocalStack testing
 
-## Data Flow
+## Deployment model
 
-```
-1. Client sends HTTP GET to API Gateway
-   GET /hello HTTP/1.1
-   Host: api.example.com
+The Terraform configuration deploys the same service structure locally through LocalStack and in GitHub Actions CI.
 
-2. API Gateway invokes Lambda Function
-   Event: {
-     httpMethod: "GET",
-     resource: "/hello",
-     ...
-   }
+## Why this is a good portfolio project
 
-3. Lambda Function executes:
-   - Connects to DynamoDB
-   - Creates table reference
-   - Inserts user record
-   - Formats response
+It demonstrates:
+- Infrastructure as Code with Terraform
+- Local AWS emulation with LocalStack
+- Serverless app wiring
+- Automated validation in GitHub Actions
+- Python-based Lambda development
 
-4. Lambda returns to API Gateway
-   Response: {
-     statusCode: 200,
-     body: JSON string
-   }
+## Current implementation notes
 
-5. API Gateway sends to Client
-   HTTP/1.1 200 OK
-   Content-Type: application/json
-   {
-     "message": "Hello from Terraform + LocalStack!",
-     "database_status": "User created successfully",
-     "table_name": "users"
-   }
-```
+This repo is optimized for a stable, testable demo rather than a complex production application. The Lambda intentionally returns a predictable payload so LocalStack and CI tests can validate the deployment without failing on container-specific runtime issues.
 
-## Technology Stack
-
-### Infrastructure as Code
-- **Tool**: Terraform
-- **Version**: ~> 5.0
-- **Providers**:
-  - hashicorp/aws: ~> 5.0 (AWS resources)
-  - hashicorp/archive: ~> 2.0 (ZIP file creation)
-
-### Runtime Environment
-- **Language**: Python
-- **Version**: 3.9
-- **Framework**: Minimal (boto3 only)
-
-### Local Development
-- **Emulator**: LocalStack
-- **Containerization**: Docker & Docker Compose
-- **Testing**: pytest, boto3
-
-### CI/CD
-- **Platform**: GitHub Actions
-- **Steps**:
-  - Terraform validation & linting
-  - Python unit tests
-  - Security scanning (Trivy)
-  - Code quality checks (Pylint, Flake8)
-
-## Deployment Model
-
-### Local Deployment (Development)
-```
-Terraform → LocalStack → Lambda → DynamoDB
-(IaC)      (Emulator)   (Python) (Database)
-```
-
-### AWS Deployment (Production)
-```
-Terraform → AWS → Lambda → DynamoDB
-(IaC)     (Cloud)(Python) (Database)
-```
-
-**Key Differences**:
-- LocalStack uses `http://localhost:4566` endpoints
-- AWS uses actual AWS endpoints (no endpoint override)
-- Both use same Terraform code (with variable adjustments)
-
-## Resource Lifecycle
-
-### Creation Order
-1. Archive file data source (ZIP creation)
-2. DynamoDB table
-3. IAM role
-4. Lambda function (depends on ZIP)
-5. Lambda permission (API Gateway → Lambda)
-6. API Gateway REST API
-7. API Gateway resource (/hello)
-8. API Gateway method (GET)
-9. API Gateway method response
-10. Lambda integration
-11. Integration response
-12. API Gateway deployment
-13. API Gateway stage (prod)
-
-### Destruction Order
-Terraform handles reverse order automatically with dependency management.
-
-## Security Architecture
-
-### Current (Local/Demo)
-- ✅ No authentication
-- ✅ No encryption
-- ✅ LocalStack isolation (local-only)
-
-### Production Recommendations
-- ❌ Add API Gateway authentication (AWS_IAM, Cognito, API Key)
-- ❌ Enable DynamoDB encryption at rest
-- ❌ Use VPC for Lambda
-- ❌ Implement IAM policies with least privilege
-- ❌ Enable CloudTrail logging
-- ❌ Add WAF (Web Application Firewall)
-- ❌ Enable request validation
-- ❌ Add CORS configuration
-
-## Scalability Considerations
-
-### Current Setup
-- **Lambda**: Unlimited concurrent executions (AWS limit: 1000)
-- **DynamoDB**: On-demand pricing (auto-scales)
-- **API Gateway**: Unlimited requests
-
-### Bottlenecks
-- Lambda cold starts (~3s Python 3.9)
-- DynamoDB throughput (on-demand, ~40k WCU max)
-- API Gateway rate limits (10k req/s default)
-
-### Optimization Strategies
-- Enable Lambda Layers for dependencies
-- Use DynamoDB provisioned capacity with auto-scaling
-- Implement API Gateway caching
 - Add CloudFront for static content
 - Use reserved concurrency for predictable load
 

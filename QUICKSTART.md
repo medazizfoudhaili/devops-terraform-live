@@ -1,222 +1,66 @@
 # Quick Start Guide
 
-Get the project running in 5 minutes!
+This is the fastest way to get the project running locally.
 
-## 🚀 Fast Track (Windows PowerShell)
-
-### 1. Start LocalStack
-```powershell
-docker run -d -p 4566:4566 -v /var/run/docker.sock:/var/run/docker.sock localstack/localstack:latest
-```
-
-### 2. Build Lambda Package
-```powershell
-.\build.ps1
-```
-
-### 3. Deploy with Terraform
-```powershell
-terraform init
-terraform plan
-terraform apply
-```
-
-### 4. Run Tests
-```powershell
-# Unit tests
-pytest test_index.py -v
-
-# API test
-.\test_api.ps1
-```
-
-## 📋 Complete Step-by-Step (Windows)
-
-```powershell
-# Step 1: Navigate to project
-cd c:\Users\mouha\devops-terraform-live
-
-# Step 2: Start LocalStack (in background)
-docker run -d -p 4566:4566 -v /var/run/docker.sock:/var/run/docker.sock localstack/localstack:latest
-
-# Step 3: Wait for LocalStack to be ready (about 30 seconds)
-Start-Sleep -Seconds 30
-
-# Step 4: Verify LocalStack
-Invoke-WebRequest -Uri http://localhost:4566/health
-
-# Step 5: Install Python dependencies
-pip install -r requirements.txt
-
-# Step 6: Build Lambda package
-.\build.ps1
-# Should create: lambda_function_payload.zip
-
-# Step 7: Initialize Terraform
-terraform init
-
-# Step 8: Validate configuration
-terraform validate
-# Should output: Success! The configuration is valid.
-
-# Step 9: Plan deployment
-terraform plan -out=tfplan
-# Should show: Plan: 13 to add
-
-# Step 10: Apply configuration
-terraform apply tfplan
-# Should show: Apply complete! Resources: 13 added
-
-# Step 11: Run unit tests
-pytest test_index.py -v
-# Should show: 6 passed
-
-# Step 12: Test API
-.\test_api.ps1
-# Should show: All Tests Completed Successfully! ✅
-
-# Step 13: Verify DynamoDB
-aws dynamodb scan --table-name users --endpoint-url http://localhost:4566
-
-# Step 14: Clean up when done
-terraform destroy
-docker stop <container_id>
-```
-
-## 🐧 Quick Start (Linux/Mac)
+## 1. Start LocalStack
 
 ```bash
-# Navigate to project
-cd devops-terraform-live
+docker run -d \
+  --name localstack \
+  -p 4566:4566 \
+  -p 4510-4559:4510-4559 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
+  -e LAMBDA_EXECUTOR=docker \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -e AWS_ACCESS_KEY_ID=test \
+  -e AWS_SECRET_ACCESS_KEY=test \
+  localstack/localstack:3.8
+```
 
-# Start LocalStack
-docker-compose up -d
+Check the health endpoint:
 
-# Wait for startup
-sleep 30
+```bash
+curl http://localhost:4566/_localstack/health
+```
 
-# Install dependencies
-pip install -r requirements.txt
+## 2. Build the Lambda package
 
-# Build Lambda
+```bash
 bash build.sh
+```
 
-# Deploy
+## 3. Deploy infrastructure
+
+```bash
 terraform init
 terraform validate
 terraform plan -out=tfplan
-terraform apply tfplan
-
-# Test
-pytest test_index.py -v
-bash test_api.sh
-
-# Verify
-aws dynamodb scan --table-name users --endpoint-url http://localhost:4566
-
-# Cleanup
-terraform destroy
-docker-compose down
+terraform apply -auto-approve tfplan
 ```
 
-## ✅ Expected Outputs
+## 4. Test the endpoint
 
-### Build Script Output
-```
-Creating Lambda deployment package...
-✓ lambda_function_payload.zip created successfully
+```bash
+curl "$(terraform output -raw api_endpoint)"
 ```
 
-### Terraform Init
-```
-Initializing the backend...
-Initializing provider plugins...
-Terraform has been successfully configured!
+## 5. Run unit tests
+
+```bash
+python -m pytest -q
 ```
 
-### Terraform Validate
-```
-Success! The configuration is valid.
+## 6. Clean up
+
+```bash
+terraform destroy -auto-approve
+docker rm -f localstack
 ```
 
-### Terraform Plan
-```
-Plan: 13 to add, 0 to change, 0 to destroy.
-```
+## Common issue
 
-### Terraform Apply
-```
-Apply complete! Resources: 13 added, 0 changed, 0 destroyed.
-
-Outputs:
-
-api_endpoint = "http://localhost:4566/restapis/abc123/stages/prod/_user_request_/hello"
-dynamodb_table_name = "users"
-lambda_function_name = "hello-api"
-```
-
-### Unit Tests
-```
-test_index.py::TestLambdaHandler::test_handler_returns_200_status PASSED
-test_index.py::TestLambdaHandler::test_handler_returns_json_body PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_message PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_database_status PASSED
-test_index.py::TestLambdaHandler::test_handler_response_has_table_name PASSED
-test_index.py::TestLambdaHandler::test_handler_response_structure PASSED
-
-===== 6 passed =====
-```
-
-### API Test
-```
-Testing Serverless API...
-API Endpoint: http://localhost:4566/restapis/abc123/stages/prod/_user_request_/hello
-
-Sending GET request...
-Status Code: 200
-Response:
-{
-  "message": "Hello from Terraform + LocalStack!",
-  "database_status": "User created successfully",
-  "table_name": "users"
-}
-
-✅ API Test Passed!
-```
-
-## 🐛 Common Issues & Fixes
-
-### Issue: LocalStack not responding
-```
-Error: Could not connect to http://localhost:4566
-```
-**Fix**: 
-```powershell
-# Check if running
-docker ps | grep localstack
-
-# Start it
-docker run -d -p 4566:4566 -v /var/run/docker.sock:/var/run/docker.sock localstack/localstack:latest
-```
-
-### Issue: Lambda ZIP not found
-```
-Error: lambda_function_payload.zip not found
-```
-**Fix**: Run build script
-```powershell
-.\build.ps1
-```
-
-### Issue: Terraform state lock
-```
-Error: Error acquiring the state lock
-```
-**Fix**: 
-```powershell
-rm -r .terraform
-terraform init
-```
+If LocalStack does not respond, make sure Docker is running and the container has access to the Docker socket. The GitHub workflow already includes the required configuration for CI jobs.
 
 ### Issue: Port already in use
 ```

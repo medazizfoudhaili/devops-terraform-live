@@ -1,223 +1,131 @@
-# DevOps Terraform + LocalStack Project
+# Terraform + LocalStack Serverless API
 
-A complete serverless API infrastructure using Terraform and LocalStack. This project demonstrates Infrastructure as Code (IaC) best practices with AWS services.
+This project provisions a small AWS-like serverless stack locally with LocalStack and Terraform. It demonstrates Infrastructure as Code, GitHub Actions automation, and a simple API Lambda setup for demo and learning purposes.
 
-## 🎯 Project Overview
+## Overview
 
-This project creates a fully functional serverless backend with:
-- **API Gateway** - REST API endpoint
-- **Lambda Function** - Serverless compute with Python
-- **DynamoDB** - NoSQL database
-- **IAM Role** - Secure permissions management
-- **LocalStack** - Local AWS emulation for development/testing
+The stack includes:
+- API Gateway
+- Lambda
+- DynamoDB table
+- IAM role
+- LocalStack-based AWS emulation
+- GitHub Actions workflow for automated validation
 
-## 📋 Project Structure
+The Lambda is intentionally lightweight and returns a success JSON payload so it can be used reliably in LocalStack without requiring a full production-ready database flow.
 
-```
+## Project structure
+
+```text
 devops-terraform-live/
-├── index.py                    # Lambda handler (Python)
-├── main.tf                     # Terraform configuration
-├── build.ps1                   # Windows build script
-├── build.sh                    # Linux/Mac build script
-└── README.md                   # This file
+├── .github/workflows/deploy.yml   # CI/CD pipeline
+├── index.py                       # Lambda handler
+├── main.tf                        # Terraform resources
+├── docker-compose.yml             # LocalStack local runtime
+├── build.sh                       # Lambda package script
+├── build.ps1                      # Windows package script
+├── test_index.py                  # Python unit tests
+├── README.md                      # Project overview
+├── QUICKSTART.md                  # Fast local setup
+├── DEPLOYMENT.md                  # Detailed deployment guide
+├── ARCHITECTURE.md                # Architecture notes
+├── requirements.txt               # Python dependencies
+├── .gitignore                     # Ignore rules
+└── terraform.tfstate*             # Local terraform state (if present)
 ```
 
-## 🚀 Complete Deployment Steps
+## Prerequisites
 
-### Prerequisites
-- Terraform installed ([terraform.io](https://www.terraform.io/downloads.html))
-- Docker & Docker Compose (for LocalStack)
+- Docker
+- Terraform
 - Python 3.9+
-- AWS CLI (optional, for testing)
+- Optional: GitHub account for CI usage
 
-### Step 1: Start LocalStack
-LocalStack provides a local AWS environment for testing.
+## Local start
+
+Start LocalStack with the required Docker socket access:
 
 ```bash
-# Using Docker Compose
-docker run -d -p 4566:4566 -v /var/run/docker.sock:/var/run/docker.sock localstack/localstack
+docker run -d \
+  --name localstack \
+  -p 4566:4566 \
+  -p 4510-4559:4510-4559 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
+  -e LAMBDA_EXECUTOR=docker \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  -e AWS_ACCESS_KEY_ID=test \
+  -e AWS_SECRET_ACCESS_KEY=test \
+  localstack/localstack:3.8
 ```
 
-Or create a `docker-compose.yml`:
-```yaml
-version: '3.8'
-services:
-  localstack:
-    image: localstack/localstack:latest
-    ports:
-      - "4566:4566"
-    environment:
-      - SERVICES=apigateway,lambda,dynamodb,iam
-      - DEBUG=1
-      - DATA_DIR=/tmp/localstack/data
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-```
+Then verify health:
 
-Then run: `docker-compose up -d`
-
-### Step 2: Verify Project Files
-Ensure all files are in place:
-```powershell
-Get-ChildItem
-```
-
-Expected output:
-```
-index.py
-main.tf
-build.ps1
-build.sh
-README.md
-```
-
-### Step 3: Build Lambda Deployment Package
-Create the ZIP file containing your Lambda function.
-
-**On Windows (PowerShell):**
-```powershell
-.\build.ps1
-```
-
-**On Linux/Mac (Bash):**
 ```bash
-bash build.sh
+curl http://localhost:4566/_localstack/health
 ```
 
-This creates: `lambda_function_payload.zip`
-
-### Step 4: Initialize Terraform
-Download and initialize Terraform providers.
+## Deploy locally
 
 ```bash
 terraform init
-```
-
-Expected output:
-```
-Initializing the backend...
-Initializing provider plugins...
-Terraform has been successfully configured!
-```
-
-### Step 5: Validate Configuration
-Check for syntax errors before deployment.
-
-```bash
 terraform validate
-```
-
-Expected output:
-```
-Success! The configuration is valid.
-```
-
-### Step 6: Plan Deployment
-Review what Terraform will create.
-
-```bash
 terraform plan -out=tfplan
+terraform apply -auto-approve tfplan
 ```
 
-This shows:
-- 1 archive file (auto-created ZIP)
-- 1 DynamoDB table
-- 1 Lambda function
-- 1 IAM role
-- 1 API Gateway REST API
-- 1 API Gateway resource
-- 1 API Gateway method
-- 1 Lambda integration
-- 1 Lambda permission
-- 1 API Gateway deployment
-- 1 API Gateway stage
+The project outputs:
+- `api_endpoint`
+- `lambda_function_name`
+- `dynamodb_table_name`
 
-### Step 7: Apply Configuration
-Deploy the infrastructure to LocalStack.
+## Test the API
 
 ```bash
-terraform apply tfplan
+curl "$(terraform output -raw api_endpoint)"
 ```
 
-You should see output like:
-```
-aws_dynamodb_table.users: Creating...
-aws_iam_role.lambda_role: Creating...
-aws_lambda_permission.api_gateway: Creating...
-aws_api_gateway_rest_api.my_api: Creating...
-...
-Apply complete! Resources: 13 added, 0 changed, 0 destroyed.
+Example response:
 
-Outputs:
-
-api_endpoint = "http://localhost:4566/restapis/abc123/stages/prod/_user_request_/hello"
-dynamodb_table_name = "users"
-lambda_function_name = "hello-api"
-```
-
-### Step 8: Test the API
-Call the deployed endpoint.
-
-**Using curl:**
-```bash
-curl http://localhost:4566/restapis/<API_ID>/stages/prod/_user_request_/hello
-```
-
-**Using PowerShell:**
-```powershell
-Invoke-WebRequest -Uri "http://localhost:4566/restapis/<API_ID>/stages/prod/_user_request_/hello"
-```
-
-**Expected Response:**
 ```json
 {
   "message": "Hello from Terraform + LocalStack!",
   "database_status": "User created successfully",
-  "table_name": "users"
+  "table_name": "users",
+  "event": "{}"
 }
 ```
 
-### Step 9: Verify DynamoDB Data
-Check if the user record was created.
+## Run Python tests
 
 ```bash
-aws dynamodb scan --table-name users --endpoint-url http://localhost:4566
+python -m pytest -q
 ```
 
-Expected output:
-```json
-{
-  "Items": [
-    {
-      "id": {"S": "user-123"},
-      "name": {"S": "DevOps Engineer"},
-      "status": {"S": "Active"}
-    }
-  ]
-}
-```
+## CI/CD
 
-### Step 10: Clean Up
-Destroy resources when done (for local testing).
+The workflow in [.github/workflows/deploy.yml](.github/workflows/deploy.yml) validates:
+- Terraform format
+- Terraform init/validate/plan/apply
+- LocalStack startup and health check
+- Python unit tests
+- Security scan with Trivy
+
+## Notes
+
+This project is designed as a practical DevOps portfolio example. It focuses on working infrastructure automation and reliable LocalStack-based validation rather than a full production persistence workflow.
+
+## Cleanup
 
 ```bash
-terraform destroy
+terraform destroy -auto-approve
 ```
 
-Confirm by typing `yes` when prompted.
+You can also stop and remove the LocalStack container:
 
-## 📊 Architecture Diagram
-
+```bash
+docker rm -f localstack
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   API Gateway                           │
-│              (REST API Endpoint)                         │
-└─────────────────┬───────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Lambda Function                        │
-│            (Python Handler - index.py)                  │
 └─────────────────┬───────────────────────────────────────┘
                   │
                   ▼
