@@ -1,0 +1,16 @@
+# Python Dependencies for Lambda Function
+
+# AWS SDK
+boto3==1.28.85
+botocore==1.31.85
+
+# Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+
+# Code Quality
+pylint==3.0.3
+flake8==6.1.0
+
+# Development
+python-dotenv==1.0.0
