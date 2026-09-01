@@ -41,7 +41,7 @@ jobs:
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e AWS_ACCESS_KEY_ID=test \
             -e AWS_SECRET_ACCESS_KEY=test \
-            localstack/localstack:latest
+            localstack/localstack:3.8.2
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
