@@ -30,14 +30,18 @@ jobs:
 
       - name: Start LocalStack
         run: |
+          docker rm -f localstack >/dev/null 2>&1 || true
           docker run -d \
             --name localstack \
+            --privileged \
             -p 4566:4566 \
             -p 4510-4559:4510-4559 \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
             -e LAMBDA_EXECUTOR=docker \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
+            -e HOST_TMP_FOLDER=/tmp/localstack \
+            -e DEBUG=1 \
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e AWS_ACCESS_KEY_ID=test \
             -e AWS_SECRET_ACCESS_KEY=test \
@@ -50,14 +54,16 @@ jobs:
 
       - name: Wait for LocalStack
         run: |
-          for i in {1..40}; do
+          for i in {1..60}; do
             if curl --fail --silent http://localhost:4566/_localstack/health >/dev/null; then
+              echo "LocalStack ready"
               exit 0
             fi
-            sleep 2
+            sleep 3
           done
           echo "LocalStack did not start in time" >&2
-          docker logs localstack || true
+          docker ps -a || true
+          docker logs localstack --tail 200 || true
           exit 1
 
       - name: Terraform Format Check
