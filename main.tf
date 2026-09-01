@@ -13,18 +13,18 @@ terraform {
 
 # Provider pointing to LocalStack
 provider "aws" {
-  region                   = "us-east-1"
-  access_key               = "test"
-  secret_key               = "test"
+  region                      = "us-east-1"
+  access_key                  = "test"
+  secret_key                  = "test"
   skip_credentials_validation = true
-  skip_metadata_api_check  = true
-  skip_requesting_account_id = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = true
 
   endpoints {
-    apigateway     = "http://localhost:4566"
-    lambda         = "http://localhost:4566"
-    dynamodb       = "http://localhost:4566"
-    iam            = "http://localhost:4566"
+    apigateway = "http://localhost:4566"
+    lambda     = "http://localhost:4566"
+    dynamodb   = "http://localhost:4566"
+    iam        = "http://localhost:4566"
   }
 }
 
@@ -37,9 +37,9 @@ data "archive_file" "lambda_zip" {
 
 # 2. DynamoDB Table
 resource "aws_dynamodb_table" "users" {
-  name           = "users"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "id"
+  name         = "users"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
 
   attribute {
     name = "id"
@@ -133,11 +133,11 @@ resource "aws_api_gateway_integration" "lambda" {
 
 # 11. Integration Response
 resource "aws_api_gateway_integration_response" "ok" {
-  rest_api_id       = aws_api_gateway_rest_api.my_api.id
-  resource_id       = aws_api_gateway_resource.root.id
-  http_method       = aws_api_gateway_method.get.http_method
-  status_code       = aws_api_gateway_method_response.ok.status_code
-  depends_on        = [aws_api_gateway_integration.lambda]
+  rest_api_id = aws_api_gateway_rest_api.my_api.id
+  resource_id = aws_api_gateway_resource.root.id
+  http_method = aws_api_gateway_method.get.http_method
+  status_code = aws_api_gateway_method_response.ok.status_code
+  depends_on  = [aws_api_gateway_integration.lambda]
 }
 
 # 12. API Gateway Deployment
