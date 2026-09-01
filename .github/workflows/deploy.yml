@@ -25,6 +25,8 @@ jobs:
         ports:
           - 4566:4566
           - 4510-4559:4510-4559
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
         env:
           SERVICES: apigateway,lambda,dynamodb,iam,cloudwatch,logs
           LAMBDA_EXECUTOR: docker
