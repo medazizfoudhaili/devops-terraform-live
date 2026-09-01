@@ -19,22 +19,6 @@ jobs:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
 
-    services:
-      localstack:
-        image: localstack/localstack:latest
-        ports:
-          - 4566:4566
-          - 4510-4559:4510-4559
-        volumes:
-          - /var/run/docker.sock:/var/run/docker.sock
-        env:
-          SERVICES: apigateway,lambda,dynamodb,iam,cloudwatch,logs
-          LAMBDA_EXECUTOR: docker
-          AWS_DEFAULT_REGION: us-east-1
-          AWS_ACCESS_KEY_ID: test
-          AWS_SECRET_ACCESS_KEY: test
-          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
-
     env:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
@@ -44,6 +28,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Start LocalStack
+        run: |
+          docker run -d --rm \
+            --name localstack \
+            -p 4566:4566 \
+            -p 4510-4559:4510-4559 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -e SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs \
+            -e LAMBDA_EXECUTOR=docker \
+            -e AWS_DEFAULT_REGION=us-east-1 \
+            -e AWS_ACCESS_KEY_ID=test \
+            -e AWS_SECRET_ACCESS_KEY=test \
+            localstack/localstack:latest
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -51,11 +49,14 @@ jobs:
 
       - name: Wait for LocalStack
         run: |
-          for i in {1..30}; do
-            curl -fsS http://localhost:4566/_localstack/health >/dev/null && exit 0
+          for i in {1..40}; do
+            if curl --fail --silent http://localhost:4566/_localstack/health >/dev/null; then
+              exit 0
+            fi
             sleep 2
           done
           echo "LocalStack did not start in time" >&2
+          docker logs localstack || true
           exit 1
 
       - name: Terraform Format Check
