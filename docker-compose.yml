@@ -11,6 +11,7 @@ services:
       - SERVICES=apigateway,lambda,dynamodb,iam,cloudwatch,logs
       - DEBUG=1
       - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
       - DOCKER_HOST=unix:///var/run/docker.sock
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test

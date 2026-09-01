@@ -9,11 +9,30 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
 jobs:
   terraform:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
-    
+
+    services:
+      localstack:
+        image: localstack/localstack:latest
+        ports:
+          - 4566:4566
+          - 4510-4559:4510-4559
+        env:
+          SERVICES: apigateway,lambda,dynamodb,iam,cloudwatch,logs
+          LAMBDA_EXECUTOR: docker
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: test
+          AWS_SECRET_ACCESS_KEY: test
+          LOCALSTACK_AUTH_TOKEN: ${{ secrets.LOCALSTACK_AUTH_TOKEN }}
+
     env:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
@@ -28,6 +47,15 @@ jobs:
         with:
           terraform_version: 1.5.0
 
+      - name: Wait for LocalStack
+        run: |
+          for i in {1..30}; do
+            curl -fsS http://localhost:4566/_localstack/health >/dev/null && exit 0
+            sleep 2
+          done
+          echo "LocalStack did not start in time" >&2
+          exit 1
+
       - name: Terraform Format Check
         run: terraform fmt -check -recursive
 
@@ -39,7 +67,9 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan -out=tfplan
-        continue-on-error: true
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false tfplan
 
       - name: Comment Plan on PR
         if: github.event_name == 'pull_request'
@@ -47,12 +77,13 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('tfplan.txt', 'utf8');
+            const plan = fs.readFileSync('tfplan', 'utf8');
+            const output = await exec.exec('terraform', ['show', '-no-color', 'tfplan']);
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '```\n' + plan + '\n```'
+              body: '```\n' + output + '\n```'
             });
 
   python-tests:
@@ -79,6 +110,10 @@ jobs:
   security:
     name: Security Checks
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout code
